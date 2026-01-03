@@ -38,81 +38,107 @@ const LoadFFmpeg = async () => {
 }
 
 const PrepareFile = async (id: string) => {
-  const asset = await db.assets.get(id);
-  if (!asset) return;
+  try {
+    const asset = await db.assets.get(id);
+    if (!asset) return;
 
-  let arrayBuffer: ArrayBuffer | null = await asset.data.arrayBuffer();
-  await ffmpegRef?.writeFile(asset.name, new Uint8Array(arrayBuffer));
-  arrayBuffer = null;
-  await ffmpegRef.exec([
-    "-analyzeduration",
-    "100000",
-    "-probesize",
-    "100000",
-    "-i",
-    asset.name,
-  ]);
-  console.log(`File ${asset.name} is now in VFS`);
+    let arrayBuffer: ArrayBuffer | null = await asset.data.arrayBuffer();
+    console.log(`Writing ${asset.name} to VFS (${arrayBuffer.byteLength} bytes)`);
+    await ffmpegRef.writeFile(asset.name, new Uint8Array(arrayBuffer));
+    arrayBuffer = null;
+    await ffmpegRef.exec([
+      "-analyzeduration",
+      "100000",
+      "-probesize",
+      "100000",
+      "-i",
+      asset.name,
+    ]);
 
-  self.postMessage({
-    type: "FILE_READY",
-    payload: { name: asset.name, id, metaData: lastMetadata },
-  });
+    console.log(`File ${asset.name} is now in VFS`);
+
+    self.postMessage({
+      type: "FILE_READY",
+      payload: { name: asset.name, id, metaData: lastMetadata },
+    });
+  } catch (e) {
+    self.postMessage({ type: "ERROR", payload: e instanceof Error ? e.message : String(e) });
+  }
 }
 
 const GetThumbnail = async (fileName: string) => {
-  const outputName = `thumb_${Date.now()}.jpg`;
+  try {
+    const outputName = `thumb_${Date.now()}.jpg`;
 
-  await ffmpegRef.exec([
-    "-ss",
-    "00:00:01",
-    "-i",
-    fileName,
-    "-frames:v",
-    "1",
-    outputName,
-  ]);
+    const result = await ffmpegRef.exec([
+      "-ss",
+      "00:00:01",
+      "-i",
+      fileName,
+      "-frames:v",
+      "1",
+      "-y",
+      outputName,
+    ]);
 
-  const data = await ffmpegRef.readFile(outputName);
-  const uint8Data = data as Uint8Array;
-  const nonSharedBuffer = new Uint8Array(uint8Data).slice().buffer;
-  const blob = new Blob([nonSharedBuffer], { type: "image/jpeg" });
+    if (result !== 0) throw new Error("Thumbnail capture failed");
 
-  self.postMessage({
-    type: "THUMBNAIL_READY",
-    payload: { blob, fileName },
-  });
+    const data = await ffmpegRef.readFile(outputName);
+    const uint8Data = data as Uint8Array;
+    const nonSharedBuffer = new Uint8Array(uint8Data).slice().buffer;
+    const blob = new Blob([nonSharedBuffer], { type: "image/jpeg" });
 
-  await ffmpegRef.deleteFile(outputName);
+    self.postMessage({
+      type: "THUMBNAIL_READY",
+      payload: { blob, fileName },
+    });
+
+    await ffmpegRef.deleteFile(outputName);
+  } catch (e) {
+    self.postMessage({ type: "ERROR", payload: e instanceof Error ? e.message : String(e) });
+  }
 }
 
-const GetFrame = async (fileName: string, time: number) => {
-  const outputName = `preview.jpg`;
+const GetFrame = async (fileName: string, time: number, quality: number = 2) => {
+  try {
+    const outputName = `snapshot_${Date.now()}.jpg`;
 
-  await ffmpegRef.exec([
-    "-ss",
-    time.toString(),
-    "-i",
-    fileName,
-    "-frames:v",
-    "1",
-    "-vf",
-    "scale=640:-1",
-    "-q:v",
-    "5",
-    "-y",
-    outputName,
-  ]);
+    self.postMessage({ type: "PROGRESS", payload: { progress: 10 } });
 
-  const data = await ffmpegRef.readFile(outputName);
-  const uint8Data = data as Uint8Array;
-  const nonSharedBuffer = new Uint8Array(uint8Data).slice().buffer;
-  const blob = new Blob([nonSharedBuffer], { type: "image/jpeg" });
+    const result = await ffmpegRef.exec([
+      "-ss",
+      time.toString(),
+      "-i",
+      fileName,
+      "-frames:v",
+      "1",
+      "-q:v",
+      quality.toString(),
+      "-threads", "1",
+      "-y",
+      outputName,
+    ]);
 
-  self.postMessage({
-    type: "PREVIEW_READY",
-    payload: { blob },
-  });
+    if (result !== 0) throw new Error("Frame capture failed. Video might be too large for browser memory.");
+
+    console.log("getting frame done")
+    const data = await ffmpegRef.readFile(outputName);
+    const uint8Data = data as Uint8Array;
+    console.log("frame read")
+    const nonSharedBuffer = new Uint8Array(uint8Data).slice().buffer;
+    console.log("buffer created")
+    const blob = new Blob([nonSharedBuffer], { type: "image/jpeg" });
+    console.log("blob created")
+
+    self.postMessage({
+      type: "FRAME_READY",
+      payload: { blob, fileName, time },
+    });
+
+    await ffmpegRef.deleteFile(outputName);
+  } catch (e) {
+    self.postMessage({ type: "ERROR", payload: e instanceof Error ? e.message : String(e) });
+  }
 }
 
 const ExportTimeline = async (clips: (Record<string, unknown> & {
@@ -133,102 +159,118 @@ const ExportTimeline = async (clips: (Record<string, unknown> & {
   startTime: number;
   duration: number;
 })[] = []) => {
-  const outputName = "output.mp4"
-  const mergeName = "merged.mp4"
-  const trimFilenames: string[] = [];
+  try {
+    const outputName = "output.mp4"
+    const mergeName = "merged.mp4"
+    const trimFilenames: string[] = [];
 
-  for (let i = 0; i < clips?.length; i++) {
-    const clip = clips[i];
-    const trimName = `trim_${i}.mp4`;
+    for (let i = 0; i < clips?.length; i++) {
+      const clip = clips[i];
+      const trimName = `trim_${i}.mp4`;
 
-    const filters = ["scale=1280:720"];
-    if (clip.filter === 'grayscale') filters.push("hue=s=0");
-    if (clip.filter === 'sepia') filters.push("colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131");
-    if (clip.filter === 'vintage') filters.push("curves=vintage");
-    if (clip.filter === 'vibrant') filters.push("eq=saturation=1.3");
+      const filters = ["scale=1280:720"];
+      if (clip.filter === 'grayscale') filters.push("hue=s=0");
+      if (clip.filter === 'sepia') filters.push("colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131");
+      if (clip.filter === 'vintage') filters.push("curves=vintage");
+      if (clip.filter === 'vibrant') filters.push("eq=saturation=1.3");
 
-    const { brightness, contrast, saturation } = clip.visualSettings;
-    filters.push(`eq=brightness=${brightness}:contrast=${contrast}:saturation=${saturation}`);
+      const { brightness, contrast, saturation } = clip.visualSettings;
+      filters.push(`eq=brightness=${brightness}:contrast=${contrast}:saturation=${saturation}`);
 
-    if (clip.transition === 'fade') {
-      filters.push("fade=in:st=0:d=1");
+      if (clip.transition === 'fade') {
+        filters.push("fade=in:st=0:d=1");
+      }
+
+      const result = await ffmpegRef.exec([
+        "-ss", clip.offset.toString(),
+        "-t", clip.duration.toString(),
+        "-i", clip.fileName,
+        "-vf", filters.join(","),
+        "-af", `volume=${clip.volume}`,
+        "-c:v", "libx264",
+        "-crf", "32",
+        "-preset", "veryfast",
+        "-threads", "1",
+        "-c:a", "aac",
+        "-b:a", "128k",
+        trimName
+      ])
+      if (result !== 0) throw new Error(`Export failed on clip ${i}`);
+      trimFilenames.push(trimName);
     }
 
-    await ffmpegRef.exec([
-      "-ss", clip.offset.toString(),
-      "-t", clip.duration.toString(),
-      "-i", clip.fileName,
-      "-vf", filters.join(","),
-      "-af", `volume=${clip.volume}`,
-      "-c:v", "libx264",
-      "-crf", "32",
-      "-preset", "veryfast",
-      "-c:a", "aac",
-      "-b:a", "128k",
-      trimName
-    ])
-    trimFilenames.push(trimName);
-  }
+    const fileList = trimFilenames?.map((trimName) => `file '${trimName}'`).join('\n');
+    console.log("File list", fileList)
+    await ffmpegRef.writeFile('concat_list.txt', fileList);
+    console.log("File list written")
 
-  const fileList = trimFilenames?.map((trimName) => `file '${trimName}'`).join('\n');
-  console.log("File list", fileList)
-  await ffmpegRef.writeFile('concat_list.txt', fileList);
-  console.log("File list written")
+    const concatResult = await ffmpegRef.exec(['-f', 'concat', '-safe', '0', '-i', 'concat_list.txt', '-c', 'copy', mergeName]);
+    if (concatResult !== 0) throw new Error("Concatenate failed");
+    console.log("Concatenation done")
 
-  await ffmpegRef.exec(['-f', 'concat', '-safe', '0', '-i', 'concat_list.txt', '-c', 'copy', mergeName]);
-  console.log("Concatenation done")
+    if (textOverlays && textOverlays.length > 0) {
+      const drawtextFilters = textOverlays.map(text => {
+        const shadowOptions = text.shadow ? ":shadowcolor=black@0.6:shadowx=3:shadowy=3" : "";
+        return `drawtext=text='${text.text}':x=(w*${text.x / 100}-tw/2):y=(h*${text.y / 100}-th/2):fontsize=${text.fontSize}:fontcolor=${text.color}${shadowOptions}:enable='between(t,${text.startTime},${text.startTime + text.duration})'`;
+      }).join(",");
 
-  if (textOverlays && textOverlays.length > 0) {
-    const drawtextFilters = textOverlays.map(text => {
-      const shadowOptions = text.shadow ? ":shadowcolor=black@0.6:shadowx=3:shadowy=3" : "";
-      return `drawtext=text='${text.text}':x=(w*${text.x / 100}-tw/2):y=(h*${text.y / 100}-th/2):fontsize=${text.fontSize}:fontcolor=${text.color}${shadowOptions}:enable='between(t,${text.startTime},${text.startTime + text.duration})'`;
-    }).join(",");
+      const textResult = await ffmpegRef.exec([
+        "-i", mergeName,
+        "-vf", drawtextFilters,
+        "-c:v", "libx264",
+        "-crf", "32",
+        "-preset", "veryfast",
+        "-threads", "1",
+        "-c:a", "copy",
+        outputName
+      ]);
+      if (textResult !== 0) throw new Error("Text overlay export failed");
+    } else {
+      const copyResult = await ffmpegRef.exec(["-i", mergeName, "-c", "copy", outputName]);
+      if (copyResult !== 0) throw new Error("Final copy failed");
+    }
 
-    await ffmpegRef.exec([
-      "-i", mergeName,
-      "-vf", drawtextFilters,
-      "-c:v", "libx264",
-      "-crf", "32",
-      "-preset", "veryfast",
-      "-c:a", "copy",
-      outputName
-    ]);
-  } else {
-    await ffmpegRef.exec(["-i", mergeName, "-c", "copy", outputName]);
-  }
-
-  const data = await ffmpegRef?.readFile(outputName);
-  const blob = new Blob([new Uint8Array(data as Uint8Array)], { type: "video/mp4" });
-  console.log("Exported video data", blob)
-  self.postMessage({ type: "EXPORT_READY", payload: { blob } });
-  for (const file of [...trimFilenames, mergeName, outputName, 'concat_list.txt']) {
-    try { await ffmpegRef.deleteFile(file); } catch { /* ignore error */ }
+    const data = await ffmpegRef?.readFile(outputName);
+    const blob = new Blob([new Uint8Array(data as Uint8Array)], { type: "video/mp4" });
+    console.log("Exported video data", blob)
+    self.postMessage({ type: "EXPORT_READY", payload: { blob } });
+    for (const file of [...trimFilenames, mergeName, outputName, 'concat_list.txt']) {
+      try { await ffmpegRef.deleteFile(file); } catch { /* ignore error */ }
+    }
+  } catch (e) {
+    self.postMessage({ type: "ERROR", payload: e instanceof Error ? e.message : String(e) });
   }
 }
 
 const CompressFile = async (id: string, fileName: string) => {
-  const outputName = `compressed_${Date.now()}.mp4`;
-  await ffmpegRef.exec([
-    "-i", fileName,
-    "-vcodec", "libx264",
-    "-crf", "32",
-    "-preset", "veryfast",
-    "-vf", "scale='min(1280,iw)':-2",
-    "-acodec", "aac",
-    "-b:a", "128k",
-    outputName
-  ]);
+  try {
+    const outputName = `compressed_${Date.now()}.mp4`;
+    const result = await ffmpegRef.exec([
+      "-i", fileName,
+      "-vcodec", "libx264",
+      "-crf", "32",
+      "-preset", "veryfast",
+      "-vf", "scale='min(1280,iw)':-2",
+      "-acodec", "aac",
+      "-b:a", "128k",
+      "-threads", "1",
+      outputName
+    ]);
+    if (result !== 0) throw new Error("Compression failed");
 
-  const data = await ffmpegRef.readFile(outputName);
-  const uint8Data = data as Uint8Array;
-  const blob = new Blob([new Uint8Array(uint8Data)], { type: "video/mp4" });
+    const data = await ffmpegRef.readFile(outputName);
+    const uint8Data = data as Uint8Array;
+    const blob = new Blob([new Uint8Array(uint8Data)], { type: "video/mp4" });
 
-  self.postMessage({
-    type: "COMPRESSION_READY",
-    payload: { blob, originalId: id, name: `compressed_${fileName}` },
-  });
+    self.postMessage({
+      type: "COMPRESSION_READY",
+      payload: { blob, originalId: id, name: `compressed_${fileName}` },
+    });
 
-  await ffmpegRef.deleteFile(outputName);
+    await ffmpegRef.deleteFile(outputName);
+  } catch (e) {
+    self.postMessage({ type: "ERROR", payload: e instanceof Error ? e.message : String(e) });
+  }
 }
 
 self.onmessage = async (event) => {
@@ -247,5 +289,22 @@ self.onmessage = async (event) => {
   } else if (type === "COMPRESS_FILE") {
     const { id, fileName } = payload;
     CompressFile(id, fileName);
+  } else if (type === "GET_FRAME") {
+    const { fileName, time, quality } = payload;
+    GetFrame(fileName, time, quality);
+  } else if (type === "UNLOAD_FILE") {
+    const { fileName } = payload;
+    try { await ffmpegRef.deleteFile(fileName); } catch { /* ignore */ }
+  } else if (type === "CLEAR_ALL") {
+    try {
+      const files = await ffmpegRef.listDir('/');
+      for (const file of files) {
+        if (!file.isDir) {
+          try { await ffmpegRef.deleteFile(file.name); } catch { /* ignore */ }
+        }
+      }
+    } catch (e) {
+      console.error("Clear all failed", e);
+    }
   }
 };

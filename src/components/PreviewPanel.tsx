@@ -4,6 +4,7 @@ import "../App.css";
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import PauseIcon from '@mui/icons-material/Pause';
 import CloseIcon from '@mui/icons-material/Close';
+import CameraAltIcon from '@mui/icons-material/CameraAlt';
 
 interface PreviewPanelProps {
     videoRef: RefObject<HTMLVideoElement | null>;
@@ -15,6 +16,7 @@ interface PreviewPanelProps {
     loaded: boolean;
     compareClip: AssetMetadata | null;
     onCloseCompare: () => void;
+    onCaptureFrame: (fileName: string, time: number, quality: number) => void;
 }
 
 export const PreviewPanel: React.FC<PreviewPanelProps> = ({
@@ -26,10 +28,12 @@ export const PreviewPanel: React.FC<PreviewPanelProps> = ({
     setIsPlaying,
     loaded,
     compareClip,
-    onCloseCompare
+    onCloseCompare,
+    onCaptureFrame
 }) => {
     const refPlayerRef = useRef<HTMLVideoElement>(null);
     const [isRefPlaying, setIsRefPlaying] = useState(false);
+    const [showQualityMenu, setShowQualityMenu] = useState(false);
 
     const currentClip = timelineClips.find(c =>
         playheadSec >= c.timelineStart && playheadSec < (c.timelineStart + c.duration)
@@ -62,6 +66,12 @@ export const PreviewPanel: React.FC<PreviewPanelProps> = ({
             refPlayerRef.current.pause();
             setIsRefPlaying(false);
         }
+    };
+
+    const handleCapture = (quality: number) => {
+        if (!currentClip) return;
+        onCaptureFrame(currentClip.name, playheadSec - currentClip.timelineStart + currentClip.offset, quality);
+        setShowQualityMenu(false);
     };
 
     return (
@@ -106,9 +116,43 @@ export const PreviewPanel: React.FC<PreviewPanelProps> = ({
                                 className="overlay-play-btn"
                                 onClick={() => setIsPlaying(!isPlaying)}
                                 disabled={!loaded}
+                                title={isPlaying ? "Pause" : "Play"}
                             >
                                 {isPlaying ? <PauseIcon /> : <PlayArrowIcon />}
                             </button>
+
+                            <div className="capture-control-wrapper" style={{ position: 'relative' }}>
+                                <button
+                                    className="overlay-play-btn"
+                                    onClick={() => setShowQualityMenu(!showQualityMenu)}
+                                    disabled={!currentClip}
+                                    title="Capture Frame"
+                                    style={{ background: 'var(--bg-element)' }}
+                                >
+                                    <CameraAltIcon />
+                                </button>
+
+                                {showQualityMenu && (
+                                    <div className="quality-menu" style={{
+                                        position: 'absolute',
+                                        bottom: '100%',
+                                        right: 0,
+                                        background: 'var(--bg-panel)',
+                                        border: '1px solid var(--border-color)',
+                                        borderRadius: 'var(--radius-md)',
+                                        padding: '4px',
+                                        marginBottom: '8px',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        gap: '2px',
+                                        zIndex: 100
+                                    }}>
+                                        <button className="menu-item" onClick={() => handleCapture(1)} style={{ padding: '8px 12px', fontSize: '12px', whiteSpace: 'nowrap', width: '100%', justifyContent: 'flex-start' }}>Highest (100%)</button>
+                                        <button className="menu-item" onClick={() => handleCapture(5)} style={{ padding: '8px 12px', fontSize: '12px', whiteSpace: 'nowrap', width: '100%', justifyContent: 'flex-start' }}>High (90%)</button>
+                                        <button className="menu-item" onClick={() => handleCapture(15)} style={{ padding: '8px 12px', fontSize: '12px', whiteSpace: 'nowrap', width: '100%', justifyContent: 'flex-start' }}>Medium (70%)</button>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     )}
                 </div>
@@ -123,7 +167,7 @@ export const PreviewPanel: React.FC<PreviewPanelProps> = ({
                             src={compareClip.objectUrl}
                             className="main-preview"
                             controls={false}
-                            muted={true} 
+                            muted={true}
                             onClick={toggleRefPlay}
                             style={{ cursor: 'pointer' }}
                         />

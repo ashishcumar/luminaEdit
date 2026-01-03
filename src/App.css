@@ -135,12 +135,80 @@ button:focus-visible {
   overflow-y: auto;
 }
 
+/* Processing Overlay */
+.processing-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.processing-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 32px;
+  width: 400px;
+  text-align: center;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+}
+
+.processing-card h3 {
+  margin: 16px 0 8px;
+  color: var(--text-primary);
+}
+
+.processing-card p {
+  color: var(--text-secondary);
+  font-size: 14px;
+  margin-bottom: 24px;
+}
+
+.progress-container {
+  height: 8px;
+  background: var(--bg-element);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.progress-bar {
+  height: 100%;
+  background: var(--accent-primary);
+  transition: width 0.3s ease;
+}
+
+.progress-text {
+  font-size: 13px;
+  font-weight: bold;
+  color: var(--accent-primary);
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--bg-element);
+  border-top-color: var(--accent-primary);
+  border-radius: 50%;
+  margin: 0 auto;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 .asset-card {
   background: var(--bg-element);
   border-radius: var(--radius-md);
   overflow: hidden;
   border: 1px solid transparent;
-  transition: all 0.15s;
+  transition: all 0.2s ease;
+  cursor: grab;
   position: relative;
 }
 
@@ -316,6 +384,27 @@ button:focus-visible {
   background: #000;
 }
 
+.quality-menu {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  animation: slide-up 0.2s ease-out;
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.menu-item {
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: all 0.2s;
+}
+
+.menu-item:hover {
+  background: var(--accent-primary);
+  color: white;
+}
+
 .player-label {
   position: absolute;
   top: 12px; left: 12px;
@@ -351,6 +440,7 @@ button:focus-visible {
   display: flex;
   gap: 12px;
   z-index: 20;
+  margin-left: 12px;
 }
 
 .overlay-play-btn {

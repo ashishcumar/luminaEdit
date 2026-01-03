@@ -37,9 +37,7 @@ export const Header: React.FC<HeaderProps> = ({
                 <button
                     className="icon-btn"
                     title="Reset Project"
-                    onClick={() => {
-                        if (confirm("Are you sure? This will clear all files.")) handleReset();
-                    }}
+                    onClick={handleReset}
                 >
                     <DeleteSweepIcon fontSize="small" />
                 </button>

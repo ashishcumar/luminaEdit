@@ -59,20 +59,37 @@ function App() {
     setModal({ show: true, title, message, type, onConfirm });
   }, []);
 
-  const handleReset = async () => {
+  const performReset = async () => {
+    setIsProcessing(true);
     setIsPlaying(false);
     setPlayheadSec(0);
-    try {
-      await db.delete();
-      await db.open();
-    } catch (e) { console.error("DB Reset failed", e); }
 
-    setAssets([]);
-    setTimelineClips([]);
-    setTextOverlays([]);
-    setSelectedItemId(null);
-    setCompareClip(null);
-    assets.forEach(a => { if (a.objectUrl) URL.revokeObjectURL(a.objectUrl) });
+    try {
+      workerRef.current?.postMessage({ type: "CLEAR_ALL" });
+      assets.forEach(a => { if (a.objectUrl) URL.revokeObjectURL(a.objectUrl) });
+      await db.assets.clear();
+      setAssets([]);
+      setTimelineClips([]);
+      setTextOverlays([]);
+      setSelectedItemId(null);
+      setCompareClip(null);
+
+      showModal("Success", "All project data, assets, and cache have been successfully cleared.", 'info');
+    } catch (e) {
+      console.error("Reset failed", e);
+      showModal("Error", "Failed to clear project database. You may need to manually clear storage or refresh the page.", 'error');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleReset = () => {
+    showModal(
+      "Reset Project?",
+      "This will permanently delete all imported assets, your current timeline, and any cached data. This action cannot be undone.",
+      'confirm',
+      performReset
+    );
   };
 
 
@@ -257,6 +274,14 @@ function App() {
     });
   }, []);
 
+  const handleCaptureFrame = useCallback((fileName: string, time: number, quality: number) => {
+    setIsProcessing(true);
+    workerRef.current?.postMessage({
+      type: "GET_FRAME",
+      payload: { fileName, time, quality }
+    });
+  }, []);
+
   const handleDelete = (id: string) => {
     setTimelineClips((prev) => prev.filter((c) => c.instanceId !== id));
     setTextOverlays((prev) => prev.filter((t) => t.id !== id));
@@ -265,6 +290,14 @@ function App() {
 
   const handleDeleteAsset = async (assetId: string) => {
     try {
+      const assetToRemove = assets.find(a => a.id === assetId);
+      if (assetToRemove) {
+        workerRef.current?.postMessage({
+          type: "UNLOAD_FILE",
+          payload: { fileName: assetToRemove.name }
+        });
+      }
+
       await db.assets.delete(assetId);
       setAssets(prev => {
         const asset = prev.find(a => a.id === assetId);
@@ -302,6 +335,17 @@ function App() {
           prev.map((a) => (a.name === fileName ? { ...a, thumbnail: url } : a))
         );
       }
+      if (type === "FRAME_READY") {
+        const { blob, fileName, time } = payload;
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `snapshot_${fileName}_${time.toFixed(2)}s.jpg`;
+        a.click();
+        setIsProcessing(false);
+        setProcessingProgress(0);
+        showModal("Snapshot Ready", "The frame has been captured and downloaded successfully.", 'info');
+      }
       if (type === "PROGRESS") {
         setProcessingProgress(payload.progress);
       }
@@ -325,6 +369,12 @@ function App() {
         setIsProcessing(false);
         setProcessingProgress(0);
         showModal("Success", "Video compressed and downloaded successfully!", 'info');
+      }
+      if (type === "ERROR") {
+        setIsProcessing(false);
+        setIsExporting(false);
+        setProcessingProgress(0);
+        showModal("Processing Error", payload, 'error');
       }
     };
 
@@ -443,7 +493,7 @@ function App() {
 
         if (nextTime >= totalDuration) {
           setIsPlaying(false);
-          return totalDuration; 
+          return totalDuration;
         }
         return nextTime;
       });
@@ -522,6 +572,7 @@ function App() {
           loaded={loaded}
           compareClip={compareClip}
           onCloseCompare={() => setCompareClip(null)}
+          onCaptureFrame={handleCaptureFrame}
         />
 
         <PropertiesPanel
@@ -546,6 +597,22 @@ function App() {
         selectedId={selectedItemId}
       />
 
+      {/* Processing Modal Overlay */}
+      {(isProcessing || isExporting) && (
+        <div className="processing-overlay">
+          <div className="processing-card">
+            <div className="spinner"></div>
+            <h3>{isExporting ? "Exporting Project..." : "Processing Asset..."}</h3>
+            <p>Please wait, we are working on your video. This might take a moment.</p>
+            <div className="progress-container">
+              <div className="progress-bar" style={{ width: `${processingProgress}%` }}></div>
+            </div>
+            <div className="progress-text">{processingProgress}%</div>
+          </div>
+        </div>
+      )}
+
+      {/* Global Modal System */}
       {modal.show && (
         <div className="modal-overlay" onClick={() => setModal(prev => ({ ...prev, show: false }))}>
           <div className={`modal-content ${modal.type}`} onClick={e => e.stopPropagation()}>
