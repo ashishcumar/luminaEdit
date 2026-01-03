@@ -1,0 +1,5 @@
+# Run TypeScript type checking on the whole project
+npx tsc --noEmit
+
+# Run lint-staged (Prettier formatting)
+npx lint-staged

@@ -1,0 +1,251 @@
+import { FFmpeg } from "@ffmpeg/ffmpeg";
+import { db } from "../database/db";
+
+const ffmpegRef = new FFmpeg();
+const baseURL = `${self.location.origin}/ffmpeg`;
+const lastMetadata = { duration: 0, width: 0, height: 0 };
+
+const LoadFFmpeg = async () => {
+  try {
+    ffmpegRef.on("log", ({ message }) => {
+      const durationMatch = message.match(/Duration: (\d+):(\d+):(\d+\.\d+)/);
+      if (durationMatch) {
+        const hours = parseFloat(durationMatch[1]);
+        const minutes = parseFloat(durationMatch[2]);
+        const seconds = parseFloat(durationMatch[3]);
+        lastMetadata.duration = hours * 3600 + minutes * 60 + seconds;
+      }
+
+      const resMatch = message.match(/ (\d+)x(\d+)[, ]/);
+      if (resMatch && !message.includes("Stream #")) {
+        lastMetadata.width = parseInt(resMatch[1]);
+        lastMetadata.height = parseInt(resMatch[2]);
+      }
+    });
+
+    ffmpegRef.on("progress", ({ progress }) => {
+      self.postMessage({ type: "PROGRESS", payload: { progress: Math.round(progress * 100) } });
+    });
+
+    await ffmpegRef.load({
+      coreURL: `${baseURL}/ffmpeg-core.js`,
+      wasmURL: `${baseURL}/ffmpeg-core.wasm`,
+    });
+    self.postMessage({ type: "LOAD_COMPLETED" });
+  } catch (e) {
+    self.postMessage({ type: "ERROR", error: e instanceof Error ? e.message : String(e) });
+  }
+}
+
+const PrepareFile = async (id: string) => {
+  const asset = await db.assets.get(id);
+  if (!asset) return;
+
+  let arrayBuffer: ArrayBuffer | null = await asset.data.arrayBuffer();
+  await ffmpegRef?.writeFile(asset.name, new Uint8Array(arrayBuffer));
+  arrayBuffer = null;
+  await ffmpegRef.exec([
+    "-analyzeduration",
+    "100000",
+    "-probesize",
+    "100000",
+    "-i",
+    asset.name,
+  ]);
+  console.log(`File ${asset.name} is now in VFS`);
+
+  self.postMessage({
+    type: "FILE_READY",
+    payload: { name: asset.name, id, metaData: lastMetadata },
+  });
+}
+
+const GetThumbnail = async (fileName: string) => {
+  const outputName = `thumb_${Date.now()}.jpg`;
+
+  await ffmpegRef.exec([
+    "-ss",
+    "00:00:01",
+    "-i",
+    fileName,
+    "-frames:v",
+    "1",
+    outputName,
+  ]);
+
+  const data = await ffmpegRef.readFile(outputName);
+  const uint8Data = data as Uint8Array;
+  const nonSharedBuffer = new Uint8Array(uint8Data).slice().buffer;
+  const blob = new Blob([nonSharedBuffer], { type: "image/jpeg" });
+
+  self.postMessage({
+    type: "THUMBNAIL_READY",
+    payload: { blob, fileName },
+  });
+
+  await ffmpegRef.deleteFile(outputName);
+}
+
+const GetFrame = async (fileName: string, time: number) => {
+  const outputName = `preview.jpg`;
+
+  await ffmpegRef.exec([
+    "-ss",
+    time.toString(),
+    "-i",
+    fileName,
+    "-frames:v",
+    "1",
+    "-vf",
+    "scale=640:-1",
+    "-q:v",
+    "5",
+    "-y",
+    outputName,
+  ]);
+
+  const data = await ffmpegRef.readFile(outputName);
+  const uint8Data = data as Uint8Array;
+  const nonSharedBuffer = new Uint8Array(uint8Data).slice().buffer;
+  const blob = new Blob([nonSharedBuffer], { type: "image/jpeg" });
+
+  self.postMessage({
+    type: "PREVIEW_READY",
+    payload: { blob },
+  });
+}
+
+const ExportTimeline = async (clips: (Record<string, unknown> & {
+  offset: number;
+  duration: number;
+  fileName: string;
+  filter: string;
+  visualSettings: { brightness: number, contrast: number, saturation: number };
+  volume: number;
+  transition: string;
+})[], textOverlays: (Record<string, unknown> & {
+  shadow?: boolean;
+  text: string;
+  x: number;
+  y: number;
+  fontSize: number;
+  color: string;
+  startTime: number;
+  duration: number;
+})[] = []) => {
+  const outputName = "output.mp4"
+  const mergeName = "merged.mp4"
+  const trimFilenames: string[] = [];
+
+  for (let i = 0; i < clips?.length; i++) {
+    const clip = clips[i];
+    const trimName = `trim_${i}.mp4`;
+
+    const filters = ["scale=1280:720"];
+    if (clip.filter === 'grayscale') filters.push("hue=s=0");
+    if (clip.filter === 'sepia') filters.push("colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131");
+    if (clip.filter === 'vintage') filters.push("curves=vintage");
+    if (clip.filter === 'vibrant') filters.push("eq=saturation=1.3");
+
+    const { brightness, contrast, saturation } = clip.visualSettings;
+    filters.push(`eq=brightness=${brightness}:contrast=${contrast}:saturation=${saturation}`);
+
+    if (clip.transition === 'fade') {
+      filters.push("fade=in:st=0:d=1");
+    }
+
+    await ffmpegRef.exec([
+      "-ss", clip.offset.toString(),
+      "-t", clip.duration.toString(),
+      "-i", clip.fileName,
+      "-vf", filters.join(","),
+      "-af", `volume=${clip.volume}`,
+      "-c:v", "libx264",
+      "-crf", "32",
+      "-preset", "veryfast",
+      "-c:a", "aac",
+      "-b:a", "128k",
+      trimName
+    ])
+    trimFilenames.push(trimName);
+  }
+
+  const fileList = trimFilenames?.map((trimName) => `file '${trimName}'`).join('\n');
+  console.log("File list", fileList)
+  await ffmpegRef.writeFile('concat_list.txt', fileList);
+  console.log("File list written")
+
+  await ffmpegRef.exec(['-f', 'concat', '-safe', '0', '-i', 'concat_list.txt', '-c', 'copy', mergeName]);
+  console.log("Concatenation done")
+
+  if (textOverlays && textOverlays.length > 0) {
+    const drawtextFilters = textOverlays.map(text => {
+      const shadowOptions = text.shadow ? ":shadowcolor=black@0.6:shadowx=3:shadowy=3" : "";
+      return `drawtext=text='${text.text}':x=(w*${text.x / 100}-tw/2):y=(h*${text.y / 100}-th/2):fontsize=${text.fontSize}:fontcolor=${text.color}${shadowOptions}:enable='between(t,${text.startTime},${text.startTime + text.duration})'`;
+    }).join(",");
+
+    await ffmpegRef.exec([
+      "-i", mergeName,
+      "-vf", drawtextFilters,
+      "-c:v", "libx264",
+      "-crf", "32",
+      "-preset", "veryfast",
+      "-c:a", "copy",
+      outputName
+    ]);
+  } else {
+    await ffmpegRef.exec(["-i", mergeName, "-c", "copy", outputName]);
+  }
+
+  const data = await ffmpegRef?.readFile(outputName);
+  const blob = new Blob([new Uint8Array(data as Uint8Array)], { type: "video/mp4" });
+  console.log("Exported video data", blob)
+  self.postMessage({ type: "EXPORT_READY", payload: { blob } });
+  for (const file of [...trimFilenames, mergeName, outputName, 'concat_list.txt']) {
+    try { await ffmpegRef.deleteFile(file); } catch { /* ignore error */ }
+  }
+}
+
+const CompressFile = async (id: string, fileName: string) => {
+  const outputName = `compressed_${Date.now()}.mp4`;
+  await ffmpegRef.exec([
+    "-i", fileName,
+    "-vcodec", "libx264",
+    "-crf", "32",
+    "-preset", "veryfast",
+    "-vf", "scale='min(1280,iw)':-2",
+    "-acodec", "aac",
+    "-b:a", "128k",
+    outputName
+  ]);
+
+  const data = await ffmpegRef.readFile(outputName);
+  const uint8Data = data as Uint8Array;
+  const blob = new Blob([new Uint8Array(uint8Data)], { type: "video/mp4" });
+
+  self.postMessage({
+    type: "COMPRESSION_READY",
+    payload: { blob, originalId: id, name: `compressed_${fileName}` },
+  });
+
+  await ffmpegRef.deleteFile(outputName);
+}
+
+self.onmessage = async (event) => {
+  const { type, payload } = event.data;
+  if (type === "LOAD") {
+    LoadFFmpeg();
+  } else if (type === "PREPARE_FILE") {
+    const { id } = payload;
+    PrepareFile(id);
+  } else if (type === "GET_THUMBNAIL") {
+    const { fileName } = payload;
+    GetThumbnail(fileName)
+  } else if (type === "EXPORT_TIMELINE") {
+    const { clips, textOverlays } = payload;
+    ExportTimeline(clips, textOverlays);
+  } else if (type === "COMPRESS_FILE") {
+    const { id, fileName } = payload;
+    CompressFile(id, fileName);
+  }
+};

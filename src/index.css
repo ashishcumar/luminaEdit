@@ -1,0 +1,8 @@
+/* Minimized index.css to prevent conflicts with App.css Design System */
+:root {
+  /* Inherit from App.css */
+}
+body {
+  margin: 0;
+  /* Font smoothing handled in App.css */
+}
