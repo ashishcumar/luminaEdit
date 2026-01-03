@@ -1,6 +1,4 @@
 import { FFmpeg } from "@ffmpeg/ffmpeg";
-import { db } from "../database/db";
-
 const ffmpegRef = new FFmpeg();
 const baseURL = `${self.location.origin}/ffmpeg`;
 const lastMetadata = { duration: 0, width: 0, height: 0 };
@@ -37,14 +35,18 @@ const LoadFFmpeg = async () => {
   }
 }
 
-const PrepareFile = async (id: string) => {
+const PrepareFile = async (name: string, id: string) => {
   try {
-    const asset = await db.assets.get(id);
-    if (!asset) return;
+    const root = await navigator.storage.getDirectory();
+    const fileHandle = await root.getFileHandle(name);
+    const file = await fileHandle.getFile();
 
-    let arrayBuffer: ArrayBuffer | null = await asset.data.arrayBuffer();
-    console.log(`Writing ${asset.name} to VFS (${arrayBuffer.byteLength} bytes)`);
-    await ffmpegRef.writeFile(asset.name, new Uint8Array(arrayBuffer));
+    let arrayBuffer: ArrayBuffer | null = await file.arrayBuffer();
+    if (arrayBuffer.byteLength === 0 && file.size > 0) {
+      console.warn(`File ${name} is empty in OPFS despite original size ${file.size}. This is usually due to a storage quota error during Save.`);
+    }
+    console.log(`Writing ${name} to VFS (${arrayBuffer.byteLength} bytes) from OPFS`);
+    await ffmpegRef.writeFile(name, new Uint8Array(arrayBuffer));
     arrayBuffer = null;
     await ffmpegRef.exec([
       "-analyzeduration",
@@ -52,21 +54,21 @@ const PrepareFile = async (id: string) => {
       "-probesize",
       "100000",
       "-i",
-      asset.name,
+      name,
     ]);
 
-    console.log(`File ${asset.name} is now in VFS`);
+    console.log(`File ${name} is now in VFS`);
 
     self.postMessage({
       type: "FILE_READY",
-      payload: { name: asset.name, id, metaData: lastMetadata },
+      payload: { name: name, id, metaData: lastMetadata },
     });
   } catch (e) {
     self.postMessage({ type: "ERROR", payload: e instanceof Error ? e.message : String(e) });
   }
 }
 
-const GetThumbnail = async (fileName: string) => {
+const GetThumbnail = async (id: string, fileName: string) => {
   try {
     const outputName = `thumb_${Date.now()}.jpg`;
 
@@ -90,7 +92,7 @@ const GetThumbnail = async (fileName: string) => {
 
     self.postMessage({
       type: "THUMBNAIL_READY",
-      payload: { blob, fileName },
+      payload: { blob, fileName, id },
     });
 
     await ffmpegRef.deleteFile(outputName);
@@ -278,11 +280,11 @@ self.onmessage = async (event) => {
   if (type === "LOAD") {
     LoadFFmpeg();
   } else if (type === "PREPARE_FILE") {
-    const { id } = payload;
-    PrepareFile(id);
+    const { name, id } = payload;
+    PrepareFile(name, id);
   } else if (type === "GET_THUMBNAIL") {
-    const { fileName } = payload;
-    GetThumbnail(fileName)
+    const { fileName, id } = payload;
+    GetThumbnail(id, fileName)
   } else if (type === "EXPORT_TIMELINE") {
     const { clips, textOverlays } = payload;
     ExportTimeline(clips, textOverlays);

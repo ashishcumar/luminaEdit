@@ -1,9 +1,9 @@
 import Dexie, { type Table } from 'dexie';
 
 export interface VideoAsset {
-  id: string;      
-  name: string;    
-  data: File;      
+  id: string;
+  name: string;
+  size?: number;
   thumbnail?: string;
 }
 
@@ -13,7 +13,7 @@ export class MyDatabase extends Dexie {
   constructor() {
     super('VideoEditorDB');
     this.version(1).stores({
-      assets: 'id, name' 
+      assets: 'id, name'
     });
   }
 }

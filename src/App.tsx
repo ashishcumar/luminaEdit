@@ -11,6 +11,7 @@ import { MediaPanel } from "./components/MediaPanel";
 import { PreviewPanel } from "./components/PreviewPanel";
 import { Timeline } from "./components/Timeline";
 import { PropertiesPanel } from "./components/PropertiesPanel";
+import { saveToOPFS, deleteFromOPFS, clearAllOPFS, getFileFromOPFS, getStorageEstimate, isStoragePersistent, requestPersistence, isLikelyIncognito } from "./utils/opfs";
 
 function App() {
   const [loaded, setLoaded] = useState(false);
@@ -66,6 +67,7 @@ function App() {
 
     try {
       workerRef.current?.postMessage({ type: "CLEAR_ALL" });
+      await clearAllOPFS();
       assets.forEach(a => { if (a.objectUrl) URL.revokeObjectURL(a.objectUrl) });
       await db.assets.clear();
       setAssets([]);
@@ -97,7 +99,7 @@ function App() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 250 * 1024 * 1024) {
+    if (file.size > 500 * 1024 * 1024) {
       showModal(
         "Optimization Recommended",
         `This file is ${(file.size / (1024 * 1024)).toFixed(0)}MB. Most browsers have a stable handling limit of ~250MB for video assets.\n\nWe strongly recommend optimizing this file immediately after import to prevent tab crashes.`,
@@ -111,13 +113,22 @@ function App() {
   };
 
   const proceedWithImport = async (file: File) => {
+    if (!loaded) {
+      showModal("Engine Not Ready", "FFmpeg is still loading. Please wait a moment before importing files.", 'info');
+      return;
+    }
     setIsProcessing(true);
     const id = crypto.randomUUID();
     const objectUrl = URL.createObjectURL(file);
 
     try {
-      await db.assets.add({ id, name: file.name || "Untitled", data: file });
-      workerRef.current?.postMessage({ type: "PREPARE_FILE", payload: { id } });
+      const estimate = await getStorageEstimate();
+      console.log("Storage Estimate:", estimate);
+
+      await db.assets.add({ id, name: file.name || "Untitled", size: file.size });
+      await saveToOPFS(file.name, file);
+
+      workerRef.current?.postMessage({ type: "PREPARE_FILE", payload: { id, name: file.name } });
 
       const newAsset: AssetMetadata = {
         id,
@@ -131,7 +142,7 @@ function App() {
 
       setAssets(prev => [...prev, newAsset]);
 
-      if (file.size > 100 * 1024 * 1024) {
+      if (file.size > 500 * 1024 * 1024) {
         showModal(
           "Suggested: Optimize Asset",
           "This file is quite large. Would you like to compress and optimize it now for a smoother editing experience?",
@@ -144,11 +155,37 @@ function App() {
       console.error("Import failed:", err);
       URL.revokeObjectURL(objectUrl);
 
+      // Cleanup IndexedDB if saving to disk failed
+      try { await db.assets.delete(id); } catch { /* ignore */ }
+
       const error = err as { name?: string; inner?: { name?: string } };
-      if (error.name === 'QuotaExceededError' || (error.inner && error.inner.name === 'QuotaExceededError')) {
+      const isQuotaError = error.name === 'QuotaExceededError' || (error.inner && error.inner.name === 'QuotaExceededError');
+
+      if (isQuotaError) {
+        const est = await getStorageEstimate();
+        const incognito = await isLikelyIncognito();
+
+        const message = incognito
+          ? `It looks like you are in an **Incognito / Private window**. Browsers limit storage to ~300MB in private mode, which is too small for this video. \n\nPlease switch to a standard window to use the full 80GB available on your disk.`
+          : `Your browser is restricting storage for this site (~${est?.quotaMB}MB). \n\nUsed: ${est?.usageMB}MB (${est?.percent}%) \n\nIf you are NOT in Incognito, try using **127.0.0.1** instead of **localhost**, or free up space on your main drive.`;
+
         showModal(
           "Storage Limit Reached",
-          "Your browser storage is full. Browsers typically allow 1-2GB total, and this file exceeds the available space. Please delete old assets or clear your cache.",
+          message,
+          'warning',
+          async () => {
+            const success = await requestPersistence();
+            if (success) {
+              showModal("Success", "Request sent! Please try importing your file again. Your quota may have increased.", "info");
+            } else {
+              showModal("Request Failed", "The browser still restricts storage. Ensure you are not in Incognito mode or that your main disk has at least 5-10GB free.", "error");
+            }
+          }
+        );
+      } else if (error.name === 'NotReadableError' || (error.inner && error.inner.name === 'NotReadableError')) {
+        showModal(
+          "File Read Failed",
+          "The browser lost permission to read the file. This usually happens if the file is moved, deleted, or open in another application (like a video player) during the upload. \n\n Please close other apps using this file and try again.",
           'error'
         );
       } else {
@@ -158,6 +195,37 @@ function App() {
       setIsProcessing(false);
     }
   };
+
+  const hydrateAssets = useCallback(async (activeWorker: Worker) => {
+    const storedAssets = await db.assets.toArray();
+    const hydratedAssets: AssetMetadata[] = [];
+
+    for (const asset of storedAssets) {
+      const file = await getFileFromOPFS(asset.name);
+      if (!file) {
+        console.warn(`File ${asset.name} missing from OPFS. Skipping hydration for this asset.`);
+        continue;
+      }
+
+      const objectUrl = URL.createObjectURL(file);
+
+      activeWorker.postMessage({
+        type: "PREPARE_FILE",
+        payload: { id: asset.id, name: asset.name }
+      });
+
+      hydratedAssets.push({
+        id: asset.id,
+        name: asset.name,
+        size: asset.size || file.size,
+        duration: 0,
+        thumbnail: asset.thumbnail || "",
+        objectUrl,
+        type: 'video'
+      });
+    }
+    setAssets(hydratedAssets);
+  }, []);
 
   const addToTimeline = useCallback((asset: AssetMetadata) => {
     if (asset.duration <= 0) {
@@ -219,6 +287,10 @@ function App() {
   }, []);
 
   const handleExport = useCallback(() => {
+    if (!loaded) {
+      showModal("Engine Not Ready", "FFmpeg is still loading. Please wait a moment before exporting.", 'info');
+      return;
+    }
     setIsExporting(true);
     const exportData = {
       videoClips: timelineClips.map((clip) => ({
@@ -237,7 +309,7 @@ function App() {
       type: "EXPORT_TIMELINE",
       payload: { clips: exportData.videoClips, textOverlays: exportData.textOverlays },
     });
-  }, [timelineClips, textOverlays]);
+  }, [loaded, showModal, timelineClips, textOverlays]);
 
   const handleDragStart = (e: React.MouseEvent, clipId: string, type: "left" | "right") => {
     e.stopPropagation();
@@ -296,6 +368,7 @@ function App() {
           type: "UNLOAD_FILE",
           payload: { fileName: assetToRemove.name }
         });
+        await deleteFromOPFS(assetToRemove.name);
       }
 
       await db.assets.delete(assetId);
@@ -311,28 +384,39 @@ function App() {
   };
 
   useEffect(() => {
-    workerRef.current = new Worker(
+    Promise.all([isStoragePersistent(), isLikelyIncognito()]).then(([persistent, incognito]) => {
+      console.log(`[Storage] Mode: ${persistent ? 'Persistent' : 'Temporary'} | Likely Incognito: ${incognito}`);
+    });
+
+    const worker = new Worker(
       new URL("./worker/processor.worker.ts", import.meta.url),
       { type: "module" }
     );
+    workerRef.current = worker;
 
-    workerRef.current.onmessage = (event) => {
+    worker.onmessage = (event) => {
       const { type, payload } = event.data;
-      if (type === "LOAD_COMPLETED") setLoaded(true);
+      if (type === "LOAD_COMPLETED") {
+        setLoaded(true);
+        hydrateAssets(worker);
+      }
       if (type === "FILE_READY") {
         const { name, id, metaData } = payload;
         setAssets(prev => prev.map(a => a.id === id ? { ...a, duration: metaData?.duration || 0 } : a));
 
-        workerRef.current?.postMessage({
+        worker.postMessage({
           type: "GET_THUMBNAIL",
-          payload: { fileName: name },
+          payload: { fileName: name, id: id },
         });
       }
       if (type === "THUMBNAIL_READY") {
-        const { blob, fileName } = payload;
+        const { blob, id } = payload;
         const url = URL.createObjectURL(blob);
+
+        db.assets.update(id, { thumbnail: url });
+
         setAssets((prev) =>
-          prev.map((a) => (a.name === fileName ? { ...a, thumbnail: url } : a))
+          prev.map((a) => (a.id === id ? { ...a, thumbnail: url } : a))
         );
       }
       if (type === "FRAME_READY") {
@@ -378,8 +462,13 @@ function App() {
       }
     };
 
-    workerRef.current.postMessage({ type: "LOAD" });
-  }, [showModal]);
+    worker.postMessage({ type: "LOAD" });
+    // hydrateAssets is now called on LOAD_COMPLETED
+
+    return () => {
+      worker.terminate();
+    };
+  }, [showModal, hydrateAssets]);
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -644,4 +733,3 @@ function App() {
 }
 
 export default App;
-
