@@ -155,7 +155,6 @@ function App() {
       console.error("Import failed:", err);
       URL.revokeObjectURL(objectUrl);
 
-      // Cleanup IndexedDB if saving to disk failed
       try { await db.assets.delete(id); } catch { /* ignore */ }
 
       const error = err as { name?: string; inner?: { name?: string } };
