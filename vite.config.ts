@@ -16,7 +16,6 @@ function injectCrossOriginHeaders(): Plugin {
   };
 }
 
-// https://vite.dev/config/
 export default defineConfig({
   base: '/luminaEdit/',
   plugins: [react(), injectCrossOriginHeaders()],
