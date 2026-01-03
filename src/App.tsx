@@ -99,15 +99,15 @@ function App() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 500 * 1024 * 1024) {
-      showModal(
-        "Optimization Recommended",
-        `This file is ${(file.size / (1024 * 1024)).toFixed(0)}MB. Most browsers have a stable handling limit of ~250MB for video assets.\n\nWe strongly recommend optimizing this file immediately after import to prevent tab crashes.`,
-        'warning',
-        () => proceedWithImport(file)
-      );
-      return;
-    }
+    // if (file.size > 500 * 1024 * 1024) {
+    //   showModal(
+    //     "Optimization Recommended",
+    //     `This file is ${(file.size / (1024 * 1024)).toFixed(0)}MB. Most browsers have a stable handling limit of ~250MB for video assets.\n\nWe strongly recommend optimizing this file immediately after import to prevent tab crashes.`,
+    //     'warning',
+    //     () => proceedWithImport(file)
+    //   );
+    //   return;
+    // }
 
     proceedWithImport(file);
   };
@@ -142,14 +142,14 @@ function App() {
 
       setAssets(prev => [...prev, newAsset]);
 
-      if (file.size > 500 * 1024 * 1024) {
-        showModal(
-          "Suggested: Optimize Asset",
-          "This file is quite large. Would you like to compress and optimize it now for a smoother editing experience?",
-          'confirm',
-          () => handleCompress(newAsset)
-        );
-      }
+      // if (file.size > 500 * 1024 * 1024) {
+      //   showModal(
+      //     "Suggested: Optimize Asset",
+      //     "This file is quite large. Would you like to compress and optimize it now for a smoother editing experience?",
+      //     'confirm',
+      //     () => handleCompress(newAsset)
+      //   );
+      // }
 
     } catch (err) {
       console.error("Import failed:", err);
