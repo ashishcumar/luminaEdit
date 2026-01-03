@@ -372,7 +372,6 @@ function App() {
           'Hardware compression failed. Falling back to FFmpeg method...',
           'warning',
           () => {
-            // Fallback to FFmpeg
             setIsProcessing(true);
             workerRef.current?.postMessage({
               type: "COMPRESS_FILE",
@@ -385,7 +384,6 @@ function App() {
         setProcessingProgress(0);
       }
     } else {
-      // Fallback to FFmpeg for unsupported browsers
       console.log('[FFmpeg] Using software compression (WebCodecs not supported)');
       setIsProcessing(true);
       workerRef.current?.postMessage({
