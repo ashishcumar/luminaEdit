@@ -12,6 +12,7 @@ import { PreviewPanel } from "./components/PreviewPanel";
 import { Timeline } from "./components/Timeline";
 import { PropertiesPanel } from "./components/PropertiesPanel";
 import { saveToOPFS, deleteFromOPFS, clearAllOPFS, getFileFromOPFS, getStorageEstimate, isStoragePersistent, requestPersistence, isLikelyIncognito } from "./utils/opfs";
+import { compressVideoWithWebCodecs, isWebCodecsSupported } from "./utils/webcodecs";
 
 function App() {
   const [loaded, setLoaded] = useState(false);
@@ -337,13 +338,62 @@ function App() {
     });
   }
 
-  const handleCompress = useCallback((asset: AssetMetadata) => {
-    setIsProcessing(true);
-    workerRef.current?.postMessage({
-      type: "COMPRESS_FILE",
-      payload: { id: asset.id, fileName: asset.name }
-    });
-  }, []);
+  const handleCompress = useCallback(async (asset: AssetMetadata) => {
+    // Check if WebCodecs is supported for hardware acceleration
+    const webCodecsAvailable = await isWebCodecsSupported();
+
+    if (webCodecsAvailable) {
+      // Use WebCodecs (5-10x faster with GPU acceleration)
+      setIsProcessing(true);
+      try {
+        const file = await getFileFromOPFS(asset.name);
+        if (!file) throw new Error('File not found in storage');
+
+        console.log('[WebCodecs] Starting hardware-accelerated compression...');
+        const compressed = await compressVideoWithWebCodecs(
+          file,
+          { width: 1280, height: 720, bitrate: 2_000_000 },
+          (progress) => setProcessingProgress(progress)
+        );
+
+        // Download compressed file
+        const url = URL.createObjectURL(compressed);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `compressed_${asset.name}`;
+        a.click();
+        URL.revokeObjectURL(url);
+
+        showModal('Success', `Video compressed using hardware acceleration! File size: ${(compressed.size / (1024 * 1024)).toFixed(2)}MB`, 'info');
+      } catch (err) {
+        console.error('WebCodecs compression failed:', err);
+        showModal(
+          'WebCodecs Failed',
+          'Hardware compression failed. Falling back to FFmpeg method...',
+          'warning',
+          () => {
+            // Fallback to FFmpeg
+            setIsProcessing(true);
+            workerRef.current?.postMessage({
+              type: "COMPRESS_FILE",
+              payload: { id: asset.id, fileName: asset.name }
+            });
+          }
+        );
+      } finally {
+        setIsProcessing(false);
+        setProcessingProgress(0);
+      }
+    } else {
+      // Fallback to FFmpeg for unsupported browsers
+      console.log('[FFmpeg] Using software compression (WebCodecs not supported)');
+      setIsProcessing(true);
+      workerRef.current?.postMessage({
+        type: "COMPRESS_FILE",
+        payload: { id: asset.id, fileName: asset.name }
+      });
+    }
+  }, [showModal]);
 
   const handleCaptureFrame = useCallback((fileName: string, time: number, quality: number) => {
     setIsProcessing(true);
