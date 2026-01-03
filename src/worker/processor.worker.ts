@@ -29,6 +29,7 @@ const LoadFFmpeg = async () => {
     await ffmpegRef.load({
       coreURL: `${baseURL}/ffmpeg-core.js`,
       wasmURL: `${baseURL}/ffmpeg-core.wasm`,
+      workerURL: `${baseURL}/ffmpeg-core.worker.js`,
     });
     self.postMessage({ type: "LOAD_COMPLETED" });
   } catch (e) {
@@ -191,11 +192,12 @@ const ExportTimeline = async (clips: (Record<string, unknown> & {
         "-vf", filters.join(","),
         "-af", `volume=${clip.volume}`,
         "-c:v", "libx264",
-        "-crf", "32",
-        "-preset", "veryfast",
-        "-threads", "1",
+        "-crf", "28",
+        "-preset", "ultrafast",
+        "-threads", "0",
         "-c:a", "aac",
         "-b:a", "128k",
+        "-movflags", "+faststart",
         trimName
       ])
       if (result !== 0) throw new Error(`Export failed on clip ${i}`);
@@ -251,12 +253,13 @@ const CompressFile = async (id: string, fileName: string) => {
     const result = await ffmpegRef.exec([
       "-i", fileName,
       "-vcodec", "libx264",
-      "-crf", "32",
-      "-preset", "veryfast",
+      "-crf", "28",
+      "-preset", "ultrafast",
       "-vf", "scale='min(1280,iw)':-2",
       "-acodec", "aac",
       "-b:a", "128k",
-      "-threads", "1",
+      "-threads", "0",
+      "-movflags", "+faststart",
       outputName
     ]);
     if (result !== 0) throw new Error("Compression failed");
