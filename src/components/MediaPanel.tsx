@@ -30,8 +30,8 @@ export const MediaPanel: React.FC<MediaPanelProps> = ({ assets, addToTimeline, o
             </div>
             <div className="assets-list">
                 {assets.map((asset) => {
-                    const isLarge = (asset.size || 0) > 50 * 1024 * 1024; // > 50MB
-                    const isHuge = (asset.size || 0) > 800 * 1024 * 1024; // > 800MB
+                    const isLarge = (asset.size || 0) > 500 * 1024 * 1024; 
+                    const isHuge = (asset.size || 0) > 1500 * 1024 * 1024; 
                     return (
                         <div key={asset.id} className={`asset-card ${isHuge ? 'critical-size' : ''}`}>
                             {isHuge ? (

@@ -339,11 +339,10 @@ function App() {
   }
 
   const handleCompress = useCallback(async (asset: AssetMetadata) => {
-    // Check if WebCodecs is supported for hardware acceleration
+
     const webCodecsAvailable = await isWebCodecsSupported();
 
     if (webCodecsAvailable) {
-      // Use WebCodecs (5-10x faster with GPU acceleration)
       setIsProcessing(true);
       try {
         const file = await getFileFromOPFS(asset.name);
@@ -510,7 +509,6 @@ function App() {
     };
 
     worker.postMessage({ type: "LOAD" });
-    // hydrateAssets is now called on LOAD_COMPLETED
 
     return () => {
       worker.terminate();
@@ -733,7 +731,6 @@ function App() {
         selectedId={selectedItemId}
       />
 
-      {/* Processing Modal Overlay */}
       {(isProcessing || isExporting) && (
         <div className="processing-overlay">
           <div className="processing-card">
@@ -748,7 +745,6 @@ function App() {
         </div>
       )}
 
-      {/* Global Modal System */}
       {modal.show && (
         <div className="modal-overlay" onClick={() => setModal(prev => ({ ...prev, show: false }))}>
           <div className={`modal-content ${modal.type}`} onClick={e => e.stopPropagation()}>

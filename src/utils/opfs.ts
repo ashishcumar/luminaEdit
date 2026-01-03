@@ -6,7 +6,6 @@ export const saveToOPFS = async (fileName: string, data: File | Blob) => {
     try {
         await writable.write(data);
     } catch (err) {
-        // If write fails, aborting prevents leaving a corrupt/locked partial file
         if (writable.abort) await writable.abort();
         throw err;
     } finally {
@@ -43,7 +42,6 @@ export const getFileFromOPFS = async (fileName: string): Promise<File | null> =>
 
 export const clearAllOPFS = async () => {
     const root = await navigator.storage.getDirectory();
-    // Use any as any to iterate handle which might complain in TS
     for await (const [name] of (root as any)) {
         await root.removeEntry(name, { recursive: true });
     }
@@ -74,17 +72,11 @@ export const isStoragePersistent = async (): Promise<boolean> => {
     return false;
 }
 
-/**
- * Heuristic to detect if the user is likely in Incognito mode.
- * Browsers often restrict quota to a few hundred MBs in private windows.
- */
+
 export const isLikelyIncognito = async (): Promise<boolean> => {
     if (!navigator.storage || !navigator.storage.estimate) return false;
     const est = await navigator.storage.estimate();
     const quotaMB = (est.quota || 0) / (1024 * 1024);
     const persisted = await isStoragePersistent();
-
-    // Most browsers cap Incognito storage between 100MB and 600MB
-    // and explicitly deny persistence.
     return !persisted && quotaMB > 0 && quotaMB < 700;
 }

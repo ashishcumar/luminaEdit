@@ -21,7 +21,7 @@ export async function compressVideoWithWebCodecs(
     const {
         width = 1280,
         height = 720,
-        bitrate = 2_000_000, 
+        bitrate = 2_000_000,
         framerate = 30
     } = options;
 
@@ -45,7 +45,7 @@ export async function compressVideoWithWebCodecs(
         });
 
         encoder.configure({
-            codec: 'avc1.42001E', 
+            codec: 'avc1.42001E',
             width,
             height,
             bitrate,
@@ -125,6 +125,8 @@ export async function compressVideoWithWebCodecs(
 }
 
 export async function isWebCodecsSupported(): Promise<boolean> {
+    console.log('VideoEncoder available:', 'VideoEncoder' in window);
+
     if (!('VideoEncoder' in window)) {
         return false;
     }
@@ -134,12 +136,12 @@ export async function isWebCodecsSupported(): Promise<boolean> {
             codec: 'avc1.42001E',
             width: 1280,
             height: 720,
-            bitrate: 2_000_000,
+            bitrate: 2000000,
             framerate: 30,
-            hardwareAcceleration: 'prefer-hardware' as const
         };
 
         const support = await VideoEncoder.isConfigSupported(config);
+        console.log('WebCodecs config support:', support);
         return support.supported || false;
     } catch {
         return false;

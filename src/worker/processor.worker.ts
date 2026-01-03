@@ -1,6 +1,5 @@
 import { FFmpeg } from "@ffmpeg/ffmpeg";
 const ffmpegRef = new FFmpeg();
-// Use import.meta.env.BASE_URL to get the correct base path (e.g., /luminaEdit/ on GitHub Pages)
 const baseURL = `${self.location.origin}${import.meta.env.BASE_URL}ffmpeg`;
 const lastMetadata = { duration: 0, width: 0, height: 0 };
 
