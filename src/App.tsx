@@ -100,15 +100,15 @@ function App() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // if (file.size > 500 * 1024 * 1024) {
-    //   showModal(
-    //     "Optimization Recommended",
-    //     `This file is ${(file.size / (1024 * 1024)).toFixed(0)}MB. Most browsers have a stable handling limit of ~250MB for video assets.\n\nWe strongly recommend optimizing this file immediately after import to prevent tab crashes.`,
-    //     'warning',
-    //     () => proceedWithImport(file)
-    //   );
-    //   return;
-    // }
+    if (file.size > 1000 * 1024 * 1024) {
+      showModal(
+        "Optimization Recommended",
+        `This file is ${(file.size / (1024 * 1024)).toFixed(0)}MB. Most browsers have a stable handling limit of ~500MB for video assets.\n\nWe strongly recommend optimizing this file immediately after import to prevent tab crashes.`,
+        'warning',
+        () => proceedWithImport(file)
+      );
+      return;
+    }
 
     proceedWithImport(file);
   };
@@ -143,16 +143,6 @@ function App() {
       };
 
       setAssets(prev => [...prev, newAsset]);
-
-      // if (file.size > 500 * 1024 * 1024) {
-      //   showModal(
-      //     "Suggested: Optimize Asset",
-      //     "This file is quite large. Would you like to compress and optimize it now for a smoother editing experience?",
-      //     'confirm',
-      //     () => handleCompress(newAsset)
-      //   );
-      // }
-
     } catch (err) {
       console.error("Import failed:", err);
       URL.revokeObjectURL(objectUrl);
@@ -359,7 +349,6 @@ function App() {
           (progress) => setProcessingProgress(progress > 1000 ? 0 : progress)
         );
 
-        // Download compressed file
         const url = URL.createObjectURL(compressed);
         const a = document.createElement('a');
         a.href = url;
@@ -691,7 +680,6 @@ function App() {
         loaded={loaded}
         isExporting={isExporting}
         isProcessing={isProcessing}
-        progress={processingProgress}
         onFileChange={onFileChange}
         handleExport={handleExport}
         handleReset={handleReset}
@@ -747,10 +735,6 @@ function App() {
             <div className="spinner"></div>
             <h3>{isExporting ? "Exporting Project..." : "Processing Asset..."}</h3>
             <p>Please wait, we are working on your video. This might take a moment.</p>
-            <div className="progress-container">
-              <div className="progress-bar" style={{ width: `${processingProgress}%` }}></div>
-            </div>
-            <div className="progress-text">{processingProgress}%</div>
           </div>
         </div>
       )}

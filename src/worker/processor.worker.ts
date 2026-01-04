@@ -21,12 +21,25 @@ const LoadFFmpeg = async () => {
       }
     });
 
-    ffmpegRef.on("progress", ({ progress }) => {
-      const per = Math.round(progress * 100);
-      if (per >= 0 && per <= 100) {
-        self.postMessage({ type: "PROGRESS", payload: { progress: per } });
+    let currentTask = 'IDLE';
+    let totalDuration = 0;
+
+    ffmpegRef.on("log", ({ message }) => {
+      const durationMatch = message.match(/Duration: (\d+):(\d+):(\d+\.\d+)/);
+      if (durationMatch) {
+        const h = parseFloat(durationMatch[1]);
+        const m = parseFloat(durationMatch[2]);
+        const s = parseFloat(durationMatch[3]);
+        totalDuration = h * 3600 + m * 60 + s;
       }
     });
+
+    // ffmpegRef.on("progress", ({ time }) => {
+    //   if (totalDuration > 0 && time > 0) {
+    //     let progress = (time / totalDuration) * 100;
+    //     self.postMessage({ type: "PROGRESS", payload: { progress: Math.min(99, Math.round(progress)) } });
+    //   }
+    // });
 
     await ffmpegRef.load({
       coreURL: `${baseURL}/ffmpeg-core.js`,
@@ -171,6 +184,20 @@ const ExportTimeline = async (clips: (Record<string, unknown> & {
     const outputName = "output.mp4"
     const mergeName = "merged.mp4"
     const trimFilenames: string[] = [];
+    const fontName = "Arial.ttf";  // Use a standard font name
+
+    // Load a fallback font for text overlays
+    if (textOverlays?.length > 0) {
+      try {
+        const fontUrl = "https://raw.githubusercontent.com/ffmpegwasm/testdata/master/arial.ttf";
+        const fontData = await fetch(fontUrl).then(r => r.arrayBuffer());
+        await ffmpegRef.writeFile(fontName, new Uint8Array(fontData));
+        console.log("Font loaded:", fontName);
+      } catch (e) {
+        console.warn("Retrying font load...", e);
+        // Fallback or retry logic could go here
+      }
+    }
 
     for (let i = 0; i < clips?.length; i++) {
       const clip = clips[i];
@@ -220,7 +247,7 @@ const ExportTimeline = async (clips: (Record<string, unknown> & {
     if (textOverlays && textOverlays.length > 0) {
       const drawtextFilters = textOverlays.map(text => {
         const shadowOptions = text.shadow ? ":shadowcolor=black@0.6:shadowx=3:shadowy=3" : "";
-        return `drawtext=text='${text.text}':x=(w*${text.x / 100}-tw/2):y=(h*${text.y / 100}-th/2):fontsize=${text.fontSize}:fontcolor=${text.color}${shadowOptions}:enable='between(t,${text.startTime},${text.startTime + text.duration})'`;
+        return `drawtext=fontfile=${fontName}:text='${text.text.replace(/'/g, "\\'")}':x=(w*${text.x / 100}-tw/2):y=(h*${text.y / 100}-th/2):fontsize=${text.fontSize}:fontcolor=${text.color}${shadowOptions}:enable='between(t,${text.startTime},${text.startTime + text.duration})'`;
       }).join(",");
 
       const textResult = await ffmpegRef.exec([
@@ -243,7 +270,7 @@ const ExportTimeline = async (clips: (Record<string, unknown> & {
     const blob = new Blob([new Uint8Array(data as Uint8Array)], { type: "video/mp4" });
     console.log("Exported video data", blob)
     self.postMessage({ type: "EXPORT_READY", payload: { blob } });
-    for (const file of [...trimFilenames, mergeName, outputName, 'concat_list.txt']) {
+    for (const file of [...trimFilenames, mergeName, outputName, 'concat_list.txt', fontName]) {
       try { await ffmpegRef.deleteFile(file); } catch { /* ignore error */ }
     }
   } catch (e) {

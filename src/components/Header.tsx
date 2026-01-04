@@ -9,7 +9,6 @@ interface HeaderProps {
     loaded: boolean;
     isExporting: boolean;
     isProcessing: boolean;
-    progress: number;
     onFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
     handleExport: () => void;
     handleReset: () => void;
@@ -19,7 +18,6 @@ export const Header: React.FC<HeaderProps> = ({
     loaded,
     isExporting,
     isProcessing,
-    progress,
     onFileChange,
     handleExport,
     handleReset
@@ -28,7 +26,7 @@ export const Header: React.FC<HeaderProps> = ({
         <header className="editor-header">
             <div className="logo-area">
                 <img src={logo} alt="LuminaEdit" className="logo" />
-                {/* <span>LuminaEdit</span> */}
+                <span>LuminaEdit</span>
                 <span style={{ fontSize: '10px', opacity: 0.5, marginLeft: '8px', border: '1px solid #333', padding: '2px 6px', borderRadius: '4px' }}>
                     BETA {loaded ? "• Ready" : "• Loading..."}
                 </span>
@@ -45,7 +43,7 @@ export const Header: React.FC<HeaderProps> = ({
 
                 <label className={`btn-primary ${isProcessing ? 'disabled' : ''}`} style={{ cursor: 'pointer', display: 'flex', gap: '8px', alignItems: 'center' }}>
                     <UploadFileIcon fontSize="small" />
-                    {isProcessing ? (progress > 0 ? `Processing ${Math.round(progress) > 1000 ? 0 : Math.round(progress)}%` : "Importing...") : "Import"}
+                    {isProcessing ? "Importing..." : "Import"}
                     <input type="file" hidden onChange={onFileChange} accept="video/*" disabled={isProcessing} />
                 </label>
 
@@ -56,7 +54,7 @@ export const Header: React.FC<HeaderProps> = ({
                     style={{ background: isExporting ? '#3f3f46' : '' }}
                 >
                     <DownloadIcon fontSize="small" />
-                    {isExporting ? (progress > 0 ? `Exporting ${Math.round(progress) > 1000 ? 0 : Math.round(progress)}%` : "Exporting...") : "Export"}
+                    {isExporting ? "Exporting..." : "Export"}
                 </button>
             </div>
         </header>
