@@ -135,6 +135,11 @@ button:focus-visible {
   overflow-y: auto;
 }
 
+.logo{
+  height: 36px;
+  object-fit: contain;
+}
+
 /* Processing Overlay */
 .processing-overlay {
   position: fixed;
@@ -453,6 +458,10 @@ button:focus-visible {
 }
 .overlay-play-btn:hover { background: var(--accent-primary); }
 
+.timeline {
+  padding-left: 32px;   
+}
+
 .timeline-section {
   height: 320px;
   background: var(--bg-panel);
@@ -512,7 +521,7 @@ button:focus-visible {
 
 .time-ruler {
   position: absolute;
-  top: 0; left: 0; right: 0;
+  top: 0; left: 32px; right: 0;
   height: 24px;
   background: var(--bg-element);
   border-bottom: 1px solid var(--border-color);
@@ -653,7 +662,7 @@ button:focus-visible {
 
 .playhead-marker {
   position: absolute;
-  top: 0; bottom: 0;
+  top: 0; bottom: 0; left: 32px;
   width: 1px;
   background: var(--accent-danger);
   z-index: 50;

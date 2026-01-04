@@ -20,7 +20,7 @@ export const TimelineItem = ({ clip, pixelsPerSecond, onDragStart, onDelete, onS
                 onSelect(clip.instanceId);
             }}
             style={{
-                left: `${clip.timelineStart * pixelsPerSecond}px`,
+                left: `${clip.timelineStart * pixelsPerSecond + 32}px`,
                 width: `${clip.duration * pixelsPerSecond}px`,
             }}
             onMouseDown={(e) => e.stopPropagation()}

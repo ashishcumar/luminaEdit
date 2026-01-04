@@ -3,6 +3,7 @@ import "../App.css";
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import DownloadIcon from '@mui/icons-material/Download';
 import DeleteSweepIcon from '@mui/icons-material/DeleteSweep';
+import logo from '../assets/luminaEdit.png';
 
 interface HeaderProps {
     loaded: boolean;
@@ -26,8 +27,8 @@ export const Header: React.FC<HeaderProps> = ({
     return (
         <header className="editor-header">
             <div className="logo-area">
-                <span className="logo-icon">✨</span>
-                <span>LuminaEdit</span>
+                <img src={logo} alt="LuminaEdit" className="logo" />
+                {/* <span>LuminaEdit</span> */}
                 <span style={{ fontSize: '10px', opacity: 0.5, marginLeft: '8px', border: '1px solid #333', padding: '2px 6px', borderRadius: '4px' }}>
                     BETA {loaded ? "• Ready" : "• Loading..."}
                 </span>

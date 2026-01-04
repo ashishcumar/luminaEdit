@@ -77,7 +77,7 @@ export const Timeline: React.FC<TimelineProps> = ({
                                     key={text.id}
                                     className={`track-item text-item ${selectedId === text.id ? 'selected' : ''}`}
                                     style={{
-                                        left: text.startTime * pixelsPerSecond,
+                                        left: text.startTime * pixelsPerSecond + 32,
                                         width: text.duration * pixelsPerSecond,
                                         cursor: 'grab'
                                     }}
@@ -103,7 +103,7 @@ export const Timeline: React.FC<TimelineProps> = ({
                         </div>
                         <div
                             className="playhead-marker"
-                            style={{ left: `${playheadSec * pixelsPerSecond}px` }}
+                            style={{ left: `${playheadSec * pixelsPerSecond + 32}px` }}
                         >
                             <div className="playhead-head" />
                         </div>

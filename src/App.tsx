@@ -257,7 +257,8 @@ function App() {
     if (!track) return;
 
     const rect = track.getBoundingClientRect();
-    const x = Math.max(0, clientX - rect.left);
+    const offset = 32;
+    const x = Math.max(0, clientX - rect.left - offset);
     const clickedSec = x / pixelsPerSecond;
     setPlayheadSec(clickedSec);
   }, [pixelsPerSecond]);
