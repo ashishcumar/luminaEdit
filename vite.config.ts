@@ -28,4 +28,11 @@ export default defineConfig({
   optimizeDeps: {
     exclude: ['@ffmpeg/ffmpeg', '@ffmpeg/util'],
   },
+  build:{
+    minify:'esbuild',
+    rollupOptions:{
+      treeshake:true,
+    },
+    chunkSizeWarningLimit:1000
+  }
 });

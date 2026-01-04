@@ -352,7 +352,7 @@ function App() {
         const compressed = await compressVideoWithWebCodecs(
           file,
           { width: 1280, height: 720, bitrate: 2_000_000 },
-          (progress) => setProcessingProgress(progress)
+          (progress) => setProcessingProgress(progress > 1000 ? 0 : progress)
         );
 
         // Download compressed file
@@ -477,7 +477,7 @@ function App() {
         showModal("Snapshot Ready", "The frame has been captured and downloaded successfully.", 'info');
       }
       if (type === "PROGRESS") {
-        setProcessingProgress(payload.progress);
+        setProcessingProgress(payload.progress > 1000 ? 0 : payload.progress);
       }
       if (type === "EXPORT_READY") {
         const { blob } = payload;
