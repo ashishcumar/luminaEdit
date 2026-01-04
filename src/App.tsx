@@ -118,6 +118,7 @@ function App() {
       showModal("Engine Not Ready", "FFmpeg is still loading. Please wait a moment before importing files.", 'info');
       return;
     }
+    setProcessingProgress(0);
     setIsProcessing(true);
     const id = crypto.randomUUID();
     const objectUrl = URL.createObjectURL(file);
@@ -292,6 +293,7 @@ function App() {
       showModal("Engine Not Ready", "FFmpeg is still loading. Please wait a moment before exporting.", 'info');
       return;
     }
+    setProcessingProgress(0);
     setIsExporting(true);
     const exportData = {
       videoClips: timelineClips.map((clip) => ({
@@ -478,7 +480,10 @@ function App() {
         showModal("Snapshot Ready", "The frame has been captured and downloaded successfully.", 'info');
       }
       if (type === "PROGRESS") {
-        setProcessingProgress(payload.progress > 1000 ? 0 : payload.progress);
+        const p = payload.progress;
+        if (p < 100) {
+          setProcessingProgress(p);
+        }
       }
       if (type === "EXPORT_READY") {
         const { blob } = payload;
