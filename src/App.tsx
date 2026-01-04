@@ -344,6 +344,7 @@ function App() {
     const webCodecsAvailable = await isWebCodecsSupported();
 
     if (webCodecsAvailable) {
+      setProcessingProgress(0);
       setIsProcessing(true);
       try {
         const file = await getFileFromOPFS(asset.name);
@@ -372,6 +373,7 @@ function App() {
           'Hardware compression failed. Falling back to FFmpeg method...',
           'warning',
           () => {
+            setProcessingProgress(0);
             setIsProcessing(true);
             workerRef.current?.postMessage({
               type: "COMPRESS_FILE",
@@ -385,6 +387,7 @@ function App() {
       }
     } else {
       console.log('[FFmpeg] Using software compression (WebCodecs not supported)');
+      setProcessingProgress(0);
       setIsProcessing(true);
       workerRef.current?.postMessage({
         type: "COMPRESS_FILE",
