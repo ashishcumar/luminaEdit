@@ -22,7 +22,10 @@ const LoadFFmpeg = async () => {
     });
 
     ffmpegRef.on("progress", ({ progress }) => {
-      self.postMessage({ type: "PROGRESS", payload: { progress: Math.round(progress * 100) } });
+      const per = Math.round(progress * 100);
+      if (per >= 0 && per <= 100) {
+        self.postMessage({ type: "PROGRESS", payload: { progress: per } });
+      }
     });
 
     await ffmpegRef.load({
@@ -80,6 +83,8 @@ const GetThumbnail = async (id: string, fileName: string) => {
       fileName,
       "-frames:v",
       "1",
+      "-vf", "scale=320:-1",
+      "-threads", "1",
       "-y",
       outputName,
     ]);
