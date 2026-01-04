@@ -397,6 +397,7 @@ function App() {
   }, [showModal]);
 
   const handleCaptureFrame = useCallback((fileName: string, time: number, quality: number) => {
+    setProcessingProgress(0);
     setIsProcessing(true);
     workerRef.current?.postMessage({
       type: "GET_FRAME",

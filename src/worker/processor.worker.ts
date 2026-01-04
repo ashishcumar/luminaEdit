@@ -83,6 +83,8 @@ const GetThumbnail = async (id: string, fileName: string) => {
       fileName,
       "-frames:v",
       "1",
+      "-vf", "scale=320:-1",
+      "-threads", "1",
       "-y",
       outputName,
     ]);
