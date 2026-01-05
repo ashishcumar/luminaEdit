@@ -23,7 +23,6 @@ function App() {
   const [textOverlays, setTextOverlays] = useState<TextOverlay[]>([]);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
 
-  const [processingProgress, setProcessingProgress] = useState(0);
   const [playheadSec, setPlayheadSec] = useState(0);
   const [isMobile, setIsMobile] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -118,7 +117,6 @@ function App() {
       showModal("Engine Not Ready", "FFmpeg is still loading. Please wait a moment before importing files.", 'info');
       return;
     }
-    setProcessingProgress(0);
     setIsProcessing(true);
     const id = crypto.randomUUID();
     const objectUrl = URL.createObjectURL(file);
@@ -283,7 +281,6 @@ function App() {
       showModal("Engine Not Ready", "FFmpeg is still loading. Please wait a moment before exporting.", 'info');
       return;
     }
-    setProcessingProgress(0);
     setIsExporting(true);
     const exportData = {
       videoClips: timelineClips.map((clip) => ({
@@ -336,7 +333,6 @@ function App() {
     const webCodecsAvailable = await isWebCodecsSupported();
 
     if (webCodecsAvailable) {
-      setProcessingProgress(0);
       setIsProcessing(true);
       try {
         const file = await getFileFromOPFS(asset.name);
@@ -346,7 +342,7 @@ function App() {
         const compressed = await compressVideoWithWebCodecs(
           file,
           { width: 1280, height: 720, bitrate: 2_000_000 },
-          (progress) => setProcessingProgress(progress > 1000 ? 0 : progress)
+          (progress) => { console.log('WebCodecs compression progress:', progress); }
         );
 
         const url = URL.createObjectURL(compressed);
@@ -364,7 +360,6 @@ function App() {
           'Hardware compression failed. Falling back to FFmpeg method...',
           'warning',
           () => {
-            setProcessingProgress(0);
             setIsProcessing(true);
             workerRef.current?.postMessage({
               type: "COMPRESS_FILE",
@@ -374,11 +369,9 @@ function App() {
         );
       } finally {
         setIsProcessing(false);
-        setProcessingProgress(0);
       }
     } else {
       console.log('[FFmpeg] Using software compression (WebCodecs not supported)');
-      setProcessingProgress(0);
       setIsProcessing(true);
       workerRef.current?.postMessage({
         type: "COMPRESS_FILE",
@@ -388,7 +381,6 @@ function App() {
   }, [showModal]);
 
   const handleCaptureFrame = useCallback((fileName: string, time: number, quality: number) => {
-    setProcessingProgress(0);
     setIsProcessing(true);
     workerRef.current?.postMessage({
       type: "GET_FRAME",
@@ -469,14 +461,11 @@ function App() {
         a.download = `snapshot_${fileName}_${time.toFixed(2)}s.jpg`;
         a.click();
         setIsProcessing(false);
-        setProcessingProgress(0);
         showModal("Snapshot Ready", "The frame has been captured and downloaded successfully.", 'info');
       }
       if (type === "PROGRESS") {
         const p = payload.progress;
-        if (p < 100) {
-          setProcessingProgress(p);
-        }
+        console.log(`Progress: ${p}%`);
       }
       if (type === "EXPORT_READY") {
         const { blob } = payload;
@@ -486,7 +475,6 @@ function App() {
         a.download = "my_video_edit.mp4";
         a.click();
         setIsExporting(false);
-        setProcessingProgress(0);
       }
       if (type === "COMPRESSION_READY") {
         const { blob, name } = payload;
@@ -496,13 +484,11 @@ function App() {
         a.download = name;
         a.click();
         setIsProcessing(false);
-        setProcessingProgress(0);
         showModal("Success", "Video compressed and downloaded successfully!", 'info');
       }
       if (type === "ERROR") {
         setIsProcessing(false);
         setIsExporting(false);
-        setProcessingProgress(0);
         showModal("Processing Error", payload, 'error');
       }
     };

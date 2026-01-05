@@ -20,27 +20,7 @@ const LoadFFmpeg = async () => {
         lastMetadata.height = parseInt(resMatch[2]);
       }
     });
-
-    let currentTask = 'IDLE';
-    let totalDuration = 0;
-
-    ffmpegRef.on("log", ({ message }) => {
-      const durationMatch = message.match(/Duration: (\d+):(\d+):(\d+\.\d+)/);
-      if (durationMatch) {
-        const h = parseFloat(durationMatch[1]);
-        const m = parseFloat(durationMatch[2]);
-        const s = parseFloat(durationMatch[3]);
-        totalDuration = h * 3600 + m * 60 + s;
-      }
-    });
-
-    // ffmpegRef.on("progress", ({ time }) => {
-    //   if (totalDuration > 0 && time > 0) {
-    //     let progress = (time / totalDuration) * 100;
-    //     self.postMessage({ type: "PROGRESS", payload: { progress: Math.min(99, Math.round(progress)) } });
-    //   }
-    // });
-
+    
     await ffmpegRef.load({
       coreURL: `${baseURL}/ffmpeg-core.js`,
       wasmURL: `${baseURL}/ffmpeg-core.wasm`,
